@@ -44,7 +44,7 @@
 </section>
 </div></div>
 <script>
-const API_URL='https://script.google.com/macros/s/AKfycbxkz2StQFWLV-h3syDA1rC6D3tEaPwnGs43zgVL5bTdnvTNrh49Whwbgc5DgGAZCOAm7A/exec';
+const API_URL='https://script.google.com/macros/s/AKfycbyvvPGRvVTb4ZQqOUCgFP5WvJrosBBxvft3nNChZviJoM8t5_sTrirC6CLW6xNrMZKm4Q/exec';
 let books=[],selected=null;
 const $=id=>document.getElementById(id);
 fetch('data/books.json').then(r=>r.json()).then(d=>{books=d;$('bc').textContent=d.length;searchBooks()}).catch(()=>{$('results').innerHTML='<div class="box">تعذر تحميل بيانات الكتب.</div>'});
