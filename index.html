@@ -40,6 +40,7 @@
 <div class="notice">من هنا تراجع طلبات الاستعارة وتوافق أو ترفض. عند الموافقة يتم إنشاء سجل استعارة تلقائيًا لمدة 14 يومًا.</div>
 <div class="stats"><div class="stat"><b id="bc">0</b>كتاب</div><div class="stat"><b id="rc">0</b>طلب</div><div class="stat"><b id="oc">0</b>متأخر</div><div class="stat"><b>14</b>يوم</div></div>
 <div class="box"><h3>🔴 المتأخرات</h3><div class="small" style="margin-bottom:10px">عرض جميع الإعارات التي تجاوزت تاريخ الاستحقاق ولم يتم تسجيل إرجاعها.</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn danger" type="button" onclick="loadOverdue()">عرض المتأخرات</button><button class="btn secondary" type="button" onclick="printOverdueReport()">🖨️ طباعة تقرير المتأخرات</button><button class="btn secondary" type="button" onclick="printLoansReport()">🖨️ طباعة تقرير الإعارات</button></div><div id="overdue"></div></div>
+<div class="box"><div class="adminbar"><h3>📚 سجل الإعارات</h3><button class="btn secondary" type="button" onclick="loadLoans()">تحديث الإعارات</button></div><div class="small" style="margin-bottom:10px">يمكن تأكيد استلام أي كتاب لم يُسجَّل إرجاعه، سواء أُعيد قبل موعد الاستحقاق أو بعده.</div><div id="loans"><div class="loading">جاري تحميل الإعارات...</div></div></div>
 <div id="reqs" class="box"><div class="loading">جاري تحميل الطلبات...</div></div>
 </section>
 </div></div>
@@ -113,7 +114,7 @@ function stopAdminRequestPolling(){
 }
 
 async function loadRequests(){const box=$('reqs');box.innerHTML='<div class="loading">جاري تحميل الطلبات...</div>';try{const res=await api({action:'getRequests'});if(!res.success)throw Error();const arr=res.requests||[];$('rc').textContent=arr.length;if(!adminRequestsInitialized){syncKnownPendingRequests(arr);adminRequestsInitialized=true;}if(!arr.length){box.innerHTML='<div class="muted">لا توجد طلبات.</div>';return}box.innerHTML=arr.slice().reverse().map(r=>`<div class="req"><b>${esc(r.BookTitle||'')}</b><div class="small">${esc(r.StudentName||'')} · ${esc(r.StudentID||'')} · ${esc(r.Contact||'')}</div><div class="small">رقم الطلب: ${esc(r.RequestID||'')} · ${fmt(r.RequestDate)}</div><div class="status">الحالة: ${statusPill(r.Status)}</div>${r.Status==='Pending'?`<div class="actions"><button class="btn success" onclick="decide('${esc(r.RequestID)}','approve')">موافقة</button><button class="btn danger" onclick="decide('${esc(r.RequestID)}','reject')">رفض</button></div>`:''}</div>`).join('')}catch(err){box.innerHTML='<div class="notice">تعذر تحميل الطلبات. تأكد أن رابط Web App يعمل وأن صلاحية الوصول Anyone.</div>'}}
-async function loadLoans(){const box=$('loans');box.innerHTML='<div class="loading">جاري تحميل الإعارات...</div>';try{const res=await api({action:'getLoans'});if(!res.success)throw Error();const arr=res.loans||[];if(!arr.length){box.innerHTML='<div class="muted">لا توجد إعارات.</div>';return}box.innerHTML=arr.slice().reverse().map(l=>{const returned=!!l.ReturnDate;const overdue=!returned&&isLoanOverdue(l.DueDate);return `<div class="req"><b>${esc(l.BookTitle||'')}</b><div class="small">${esc(l.StudentName||'')} · ${esc(l.StudentID||'')}</div><div class="small">الإعارة: ${fmt(l.LoanDate)} · الاستحقاق: ${fmt(l.DueDate)}</div><div class="status">${returned?'تم الإرجاع':overdue?'متأخر':'سارية'}</div>${!returned?`<div class="actions"><button class="btn success" onclick="adminReturn('${esc(l.LoanID)}')">تسجيل الإرجاع</button></div>`:''}</div>`}).join('')}catch(e){box.innerHTML='<div class="notice">تعذر تحميل الإعارات.</div>'}}
+async function loadLoans(){const box=$('loans');box.innerHTML='<div class="loading">جاري تحميل الإعارات...</div>';try{const res=await api({action:'getLoans'});if(!res||!res.success)throw Error((res&&res.message)||'تعذر تحميل سجل الإعارات');const arr=Array.isArray(res.loans)?res.loans:[];if(!arr.length){box.innerHTML='<div class="muted">لا توجد إعارات.</div>';return}const now=new Date();box.innerHTML=arr.slice().reverse().map(l=>{const returned=!!l.ReturnDate;const overdue=!returned&&isLoanOverdue(l.DueDate,now);return `<div class="req"><b>${esc(l.BookTitle||'')}</b><div class="small">${esc(l.StudentName||'')} · ${esc(l.StudentID||'')}</div><div class="small">الإعارة: ${fmt(l.LoanDate)} · الاستحقاق: ${fmt(l.DueDate)}${returned?' · الإرجاع: '+fmt(l.ReturnDate):''}</div><div class="status">${returned?'تم الإرجاع':overdue?'متأخر':'سارية'}</div>${!returned?`<div class="actions"><button class="btn success" type="button" onclick="adminReturn('${esc(l.LoanID)}')">تأكيد استلام الكتاب</button></div>`:''}</div>`}).join('')}catch(e){console.error('loadLoans failed:',e);box.innerHTML='<div class="notice">تعذر تحميل الإعارات: '+esc(e.message||'تعذر الاتصال بالخادم')+'</div>'}}
 
 async function loadOverdue(){const box=$('overdue');box.innerHTML='<div class="loading">جاري تحميل المتأخرات...</div>';try{const res=await api({action:'getLoans'});if(!res.success)throw Error(res.message||'استجابة غير صالحة من الخادم');const now=new Date();const arr=getOverdueLoans(res.loans,now);$('oc').textContent=arr.length;if(!arr.length){box.innerHTML='<div class="muted" style="margin-top:12px">لا توجد استعارات متأخرة حاليًا.</div>';return}box.innerHTML=arr.map(l=>{const due=parseLoanDate(l.DueDate);const days=overdueDays(due,now);return `<div class="req"><b>${esc(l.BookTitle||'')}</b><div class="small">${esc(l.StudentName||'')} · ${esc(l.StudentID||'')}</div><div class="small">تاريخ الاستحقاق: ${fmt(l.DueDate)}</div><div class="status" style="color:#a83b32">متأخر منذ ${days} ${days===1?'يوم':'أيام'}</div><div class="actions"><button class="btn success" onclick="adminReturnFromOverdue('${esc(l.LoanID)}')">تأكيد الإرجاع</button></div></div>`}).join('')}catch(e){console.error('loadOverdue failed:',e);box.innerHTML='<div class="notice">تعذر تحميل المتأخرات: '+esc(e.message||'تعذر الاتصال بالخادم')+'</div>'}}
 
@@ -220,9 +221,21 @@ async function printLoansReport(){
 }
 
 
-async function adminReturn(id){if(!confirm('تأكيد تسجيل إرجاع الكتاب؟'))return;const r=await api({action:'returnBook',loanId:id});alert(r.message||'تم التنفيذ');if(r.success){loadOverdue()}}
+async function adminReturn(id){return confirmLoanReturn(id)}
 
-async function adminReturnFromOverdue(id){if(!confirm('هل أنت متأكد من تسجيل إرجاع هذا الكتاب؟'))return;const r=await api({action:'returnBook',loanId:id});alert(r.message||'تم التنفيذ');if(r.success){loadOverdue()}}
+async function adminReturnFromOverdue(id){return confirmLoanReturn(id)}
+
+async function confirmLoanReturn(id){
+  if(!confirm('هل تؤكد استلام الكتاب من المستعير؟ سيتم تسجيل تاريخ الإرجاع اليوم.'))return;
+  try{
+    const res=await api({action:'returnBook',loanId:id});
+    alert(res.message||(res.success?'تم تسجيل الإرجاع':'تعذر تسجيل الإرجاع'));
+    if(res.success){loadLoans();loadOverdue()}
+  }catch(e){
+    console.error('confirmLoanReturn failed:',e);
+    alert('تعذر تسجيل الإرجاع: '+(e.message||'تعذر الاتصال بالخادم'));
+  }
+}
 async function decide(id,type){let note='';if(type==='reject'){note=prompt('سبب الرفض (اختياري):')||''}else{if(!confirm('تأكيد الموافقة على الطلب؟'))return}try{const res=await api({action:type==='approve'?'approveRequest':'rejectRequest',requestId:id,note});alert(res.message||(res.success?'تم التنفيذ':'تعذر التنفيذ'));if(res.success){const a=$('newRequestAlert');if(a)a.classList.remove('show');loadRequests();loadOverdue()}}catch(e){alert('تعذر الاتصال بالنظام')}}
 function statusPill(s){s=String(s||'');let c=s==='Approved'?'approved':s==='Rejected'?'rejected':'pending';let t=s==='Approved'?'مقبول':s==='Rejected'?'مرفوض':'قيد المراجعة';return `<span class="pill ${c}">${t}</span>`}
 function fmt(v){if(!v)return '-';let d=parseLoanDate(v);return !d?esc(v):d.toLocaleString('ar-EG')}
@@ -274,7 +287,7 @@ function adminLogin(){
   setTimeout(()=>modal.querySelector('#loginUser').focus(),50);
 }
 
-function tab(id,b){document.querySelectorAll('section').forEach(x=>x.classList.add('hidden'));$(id).classList.remove('hidden');document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');if(id==='admin'){loadOverdue();startAdminRequestPolling()}else{stopAdminRequestPolling()}}
+function tab(id,b){document.querySelectorAll('section').forEach(x=>x.classList.add('hidden'));$(id).classList.remove('hidden');document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');if(id==='admin'){loadOverdue();loadLoans();startAdminRequestPolling()}else{stopAdminRequestPolling()}}
 function showAdminLogin(){
   const wrap=document.createElement('div');
   wrap.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
