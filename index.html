@@ -113,9 +113,9 @@ function stopAdminRequestPolling(){
 }
 
 async function loadRequests(){const box=$('reqs');box.innerHTML='<div class="loading">جاري تحميل الطلبات...</div>';try{const res=await api({action:'getRequests'});if(!res.success)throw Error();const arr=res.requests||[];$('rc').textContent=arr.length;if(!adminRequestsInitialized){syncKnownPendingRequests(arr);adminRequestsInitialized=true;}if(!arr.length){box.innerHTML='<div class="muted">لا توجد طلبات.</div>';return}box.innerHTML=arr.slice().reverse().map(r=>`<div class="req"><b>${esc(r.BookTitle||'')}</b><div class="small">${esc(r.StudentName||'')} · ${esc(r.StudentID||'')} · ${esc(r.Contact||'')}</div><div class="small">رقم الطلب: ${esc(r.RequestID||'')} · ${fmt(r.RequestDate)}</div><div class="status">الحالة: ${statusPill(r.Status)}</div>${r.Status==='Pending'?`<div class="actions"><button class="btn success" onclick="decide('${esc(r.RequestID)}','approve')">موافقة</button><button class="btn danger" onclick="decide('${esc(r.RequestID)}','reject')">رفض</button></div>`:''}</div>`).join('')}catch(err){box.innerHTML='<div class="notice">تعذر تحميل الطلبات. تأكد أن رابط Web App يعمل وأن صلاحية الوصول Anyone.</div>'}}
-async function loadLoans(){const box=$('loans');box.innerHTML='<div class="loading">جاري تحميل الإعارات...</div>';try{const res=await api({action:'getLoans'});if(!res.success)throw Error();const arr=res.loans||[];if(!arr.length){box.innerHTML='<div class="muted">لا توجد إعارات.</div>';return}box.innerHTML=arr.slice().reverse().map(l=>{const returned=!!l.ReturnDate;const overdue=!returned&&new Date(l.DueDate)<new Date();return `<div class="req"><b>${esc(l.BookTitle||'')}</b><div class="small">${esc(l.StudentName||'')} · ${esc(l.StudentID||'')}</div><div class="small">الإعارة: ${fmt(l.LoanDate)} · الاستحقاق: ${fmt(l.DueDate)}</div><div class="status">${returned?'تم الإرجاع':overdue?'متأخر':'سارية'}</div>${!returned?`<div class="actions"><button class="btn success" onclick="adminReturn('${esc(l.LoanID)}')">تسجيل الإرجاع</button></div>`:''}</div>`}).join('')}catch(e){box.innerHTML='<div class="notice">تعذر تحميل الإعارات.</div>'}}
+async function loadLoans(){const box=$('loans');box.innerHTML='<div class="loading">جاري تحميل الإعارات...</div>';try{const res=await api({action:'getLoans'});if(!res.success)throw Error();const arr=res.loans||[];if(!arr.length){box.innerHTML='<div class="muted">لا توجد إعارات.</div>';return}box.innerHTML=arr.slice().reverse().map(l=>{const returned=!!l.ReturnDate;const overdue=!returned&&isLoanOverdue(l.DueDate);return `<div class="req"><b>${esc(l.BookTitle||'')}</b><div class="small">${esc(l.StudentName||'')} · ${esc(l.StudentID||'')}</div><div class="small">الإعارة: ${fmt(l.LoanDate)} · الاستحقاق: ${fmt(l.DueDate)}</div><div class="status">${returned?'تم الإرجاع':overdue?'متأخر':'سارية'}</div>${!returned?`<div class="actions"><button class="btn success" onclick="adminReturn('${esc(l.LoanID)}')">تسجيل الإرجاع</button></div>`:''}</div>`}).join('')}catch(e){box.innerHTML='<div class="notice">تعذر تحميل الإعارات.</div>'}}
 
-async function loadOverdue(){const box=$('overdue');box.innerHTML='<div class="loading">جاري تحميل المتأخرات...</div>';try{const res=await api({action:'getLoans'});if(!res.success)throw Error();const now=new Date();const arr=(res.loans||[]).filter(l=>!l.ReturnDate&&l.DueDate&&new Date(l.DueDate)<now).reverse();$('oc').textContent=arr.length;if(!arr.length){box.innerHTML='<div class="muted" style="margin-top:12px">لا توجد استعارات متأخرة حاليًا.</div>';return}box.innerHTML=arr.map(l=>{const due=new Date(l.DueDate);const days=Math.max(1,Math.ceil((now-due)/86400000));return `<div class="req"><b>${esc(l.BookTitle||'')}</b><div class="small">${esc(l.StudentName||'')} · ${esc(l.StudentID||'')}</div><div class="small">تاريخ الاستحقاق: ${fmt(l.DueDate)}</div><div class="status" style="color:#a83b32">متأخر منذ ${days} ${days===1?'يوم':'أيام'}</div><div class="actions"><button class="btn success" onclick="adminReturnFromOverdue('${esc(l.LoanID)}')">تأكيد الإرجاع</button></div></div>`}).join('')}catch(e){box.innerHTML='<div class="notice">تعذر تحميل المتأخرات.</div>'}}
+async function loadOverdue(){const box=$('overdue');box.innerHTML='<div class="loading">جاري تحميل المتأخرات...</div>';try{const res=await api({action:'getLoans'});if(!res.success)throw Error();const now=new Date();const arr=getOverdueLoans(res.loans,now);$('oc').textContent=arr.length;if(!arr.length){box.innerHTML='<div class="muted" style="margin-top:12px">لا توجد استعارات متأخرة حاليًا.</div>';return}box.innerHTML=arr.map(l=>{const due=parseLoanDate(l.DueDate);const days=overdueDays(due,now);return `<div class="req"><b>${esc(l.BookTitle||'')}</b><div class="small">${esc(l.StudentName||'')} · ${esc(l.StudentID||'')}</div><div class="small">تاريخ الاستحقاق: ${fmt(l.DueDate)}</div><div class="status" style="color:#a83b32">متأخر منذ ${days} ${days===1?'يوم':'أيام'}</div><div class="actions"><button class="btn success" onclick="adminReturnFromOverdue('${esc(l.LoanID)}')">تأكيد الإرجاع</button></div></div>`}).join('')}catch(e){box.innerHTML='<div class="notice">تعذر تحميل المتأخرات.</div>'}}
 
 function escapeHtml(v){
   return String(v??'').replace(/[&<>"']/g,m=>({
@@ -182,18 +182,16 @@ function printLibraryReport(title, rows, columns, countLabel){
   setTimeout(()=>w.print(),500);
 }
 
-async 
-
 async function printOverdueReport(){
   try{
     const res=await api({action:'getLoans'});
     if(!res.success)throw Error();
     const now=new Date();
-    const arr=(res.loans||[]).filter(l=>!l.ReturnDate&&l.DueDate&&new Date(l.DueDate)<now).reverse();
+    const arr=getOverdueLoans(res.loans,now);
     const columns=['رقم الاستعارة','رقم الطلب','اسم المستعير','كود المستعير','الكتاب','تاريخ الاستعارة','تاريخ الاستحقاق','أيام التأخير'];
     const rows=arr.map(l=>{
-      const due=new Date(l.DueDate);
-      const days=Math.max(1,Math.ceil((now-due)/86400000));
+      const due=parseLoanDate(l.DueDate);
+      const days=overdueDays(due,now);
       return [l.LoanID||'',l.RequestID||'',l.StudentName||'',l.StudentID||'',l.BookTitle||'',fmt(l.LoanDate),fmt(l.DueDate),days];
     });
     printLibraryReport('تقرير المتأخرات الحالية',rows,columns,'إجمالي المتأخرات');
@@ -208,7 +206,40 @@ async function adminReturn(id){if(!confirm('تأكيد تسجيل إرجاع ا�
 async function adminReturnFromOverdue(id){if(!confirm('هل أنت متأكد من تسجيل إرجاع هذا الكتاب؟'))return;const r=await api({action:'returnBook',loanId:id});alert(r.message||'تم التنفيذ');if(r.success){loadOverdue()}}
 async function decide(id,type){let note='';if(type==='reject'){note=prompt('سبب الرفض (اختياري):')||''}else{if(!confirm('تأكيد الموافقة على الطلب؟'))return}try{const res=await api({action:type==='approve'?'approveRequest':'rejectRequest',requestId:id,note});alert(res.message||(res.success?'تم التنفيذ':'تعذر التنفيذ'));if(res.success){const a=$('newRequestAlert');if(a)a.classList.remove('show');loadRequests();loadOverdue()}}catch(e){alert('تعذر الاتصال بالنظام')}}
 function statusPill(s){s=String(s||'');let c=s==='Approved'?'approved':s==='Rejected'?'rejected':'pending';let t=s==='Approved'?'مقبول':s==='Rejected'?'مرفوض':'قيد المراجعة';return `<span class="pill ${c}">${t}</span>`}
-function fmt(v){if(!v)return '-';let d=new Date(v);return isNaN(d)?esc(v):d.toLocaleString('ar-EG')}
+function fmt(v){if(!v)return '-';let d=parseLoanDate(v);return !d?esc(v):d.toLocaleString('ar-EG')}
+function parseLoanDate(value){
+  if(value===null||value===undefined||value==='')return null;
+  if(value instanceof Date)return Number.isNaN(value.getTime())?null:new Date(value.getTime());
+  if(typeof value==='number'&&Number.isFinite(value)){
+    const d=new Date(Date.UTC(1899,11,30)+value*86400000);
+    return Number.isNaN(d.getTime())?null:d;
+  }
+  const text=String(value).trim();
+  if(!text)return null;
+  const dateOnly=text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  let d;
+  if(dateOnly)d=new Date(Number(dateOnly[1]),Number(dateOnly[2])-1,Number(dateOnly[3]));
+  else d=new Date(text);
+  return Number.isNaN(d.getTime())?null:d;
+}
+function getOverdueLoans(loans,now=new Date()){
+  return (Array.isArray(loans)?loans:[])
+    .filter(l=>l&&!l.ReturnDate&&isLoanOverdue(l.DueDate,now))
+    .slice().reverse();
+}
+function isLoanOverdue(value,now=new Date()){
+  const due=parseLoanDate(value);
+  if(!due||!now)return false;
+  const dueDay=Date.UTC(due.getFullYear(),due.getMonth(),due.getDate());
+  const today=Date.UTC(now.getFullYear(),now.getMonth(),now.getDate());
+  return dueDay<today;
+}
+function overdueDays(due,now=new Date()){
+  if(!due||!now)return 0;
+  const dueDay=Date.UTC(due.getFullYear(),due.getMonth(),due.getDate());
+  const today=Date.UTC(now.getFullYear(),now.getMonth(),now.getDate());
+  return Math.max(1,Math.floor((today-dueDay)/86400000));
+}
 function adminLogin(){
   const old=document.getElementById('loginModal'); if(old) old.remove();
   const modal=document.createElement('div'); modal.id='loginModal'; modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
@@ -316,3 +347,4 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 </script>
 <footer class="site-footer">نظام الاستعارة الإلكترونية · مكتبة المعهد العالي للعلوم الإدارية بأوسيم<br><span>© 2026 MA · All Rights Reserved</span></footer>
 </body></html>
+
